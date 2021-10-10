@@ -33,6 +33,6 @@
 
 # VS code stuff
 .vscode
-
+.vs
 # build directories
 [Bb][Uu][Ii][Ll][Dd]/
