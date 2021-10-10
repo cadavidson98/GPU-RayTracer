@@ -1,0 +1,2 @@
+#define DEBUG_DIR "@DATA_DIR_BUILD@"
+#define INSTALL_DIR "@DATA_DIR_INSTALL@"
