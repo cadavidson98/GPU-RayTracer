@@ -52,6 +52,12 @@ struct Node {
   int tri_offset;
 };
 
+struct Ray {
+  vec3 pos;
+  vec3 dir;
+  vec3 inv_dir;
+};
+
 // Output raytraced image
 layout(binding = 0, rgba32f) uniform writeonly image2D result;
 // Scene triangles
@@ -84,19 +90,18 @@ uniform float half_width;
 uniform float half_height;
 
 // Recursive ray tracing functions- Since GLSL doesn't allow for recursion,
-// we unroll the recursion into 5 functions.
-void rayRecurse(in vec3 pos, in vec3 dir, in int depth, out vec4 color);
-void rayRecurse2(in vec3 pos, in vec3 dir, in int depth, out vec4 color);
-void rayRecurse3(in vec3 pos, in vec3 dir, in int depth, out vec4 color);
-void rayRecurse4(in vec3 pos, in vec3 dir, in int depth, out vec4 color);
-void rayRecurse5(in vec3 pos, in vec3 dir, in int depth, out vec4 color);
+// we unroll the recursion into 4 functions.
+void rayRecurse(in Ray incoming, in int depth, out vec4 color);
+void rayRecurse2(in Ray incoming, in int depth, out vec4 color);
+void rayRecurse3(in Ray incoming, in int depth, out vec4 color);
+void rayRecurse4(in Ray incoming, in int depth, out vec4 color);
 
 // Ray intersection functions
-void sceneIntersect(in vec3 pos, in vec3 dir, inout HitInfo hit);
-void triangleIntersect(in vec3 pos, in vec3 dir, in Triangle tri, inout HitInfo hit);
-void AABBIntersect(in vec3 pos, in vec3 dir, in Dimension dim, inout HitInfo hit);
+void sceneIntersect(in Ray incoming, inout HitInfo hit);
+void triangleIntersect(in Ray incoming, in Triangle tri, inout HitInfo hit);
+void AABBIntersect(in Ray incoming, in Dimension dim, inout HitInfo hit);
 // Apply Phong-Blinn lighting model at the point
-void lightPoint(in vec3 pos, in vec3 dir, in vec3 norm, in Material mat, out vec4 color);
+void lightPoint(in vec3 pos, in vec3 reflect_dir, in vec3 norm, in Material mat, out vec4 color);
 
 void main () {
     ivec2 id = ivec2(gl_GlobalInvocationID.xy);
@@ -108,105 +113,97 @@ void main () {
     vec4 clr = vec4(0,0,0,1);
     
     vec3 ray_dir = (ray_pt - eye);
+    Ray eye_ray = Ray(eye, ray_dir, 1.0 / ray_dir);
     HitInfo hit;
     hit.hit = false;
     hit.time = 1.0 / 0.0;
-    rayRecurse(eye, ray_dir, 1, clr);
+    rayRecurse(eye_ray, 1, clr);
     
     imageStore(result, id, clr);
 }
 
-void rayRecurse(in vec3 pos, in vec3 dir, in int depth, out vec4 color) {
+void rayRecurse(in Ray incoming, in int depth, out vec4 color) {
   HitInfo hit;
   hit.time = 1.0 / 0.0;
   hit.hit = false;
-  sceneIntersect(pos, dir, hit);
+  sceneIntersect(incoming, hit);
   vec4 clr = vec4(background_clr, 1.0);
   if (hit.hit) {
-    lightPoint(hit.pos, dir, hit.norm, hit.mat, clr);
-    if(hit.mat.ks.x + hit.mat.ks.y + hit.mat.ks.z > 0.0) {
+    vec3 r = reflect(incoming.dir, hit.norm);
+    lightPoint(hit.pos, r, hit.norm, hit.mat, clr);
+    if(hit.mat.ks.r + hit.mat.ks.g + hit.mat.ks.b > 0.0) {
       HitInfo reflect_hit;
       reflect_hit.hit = false;
       reflect_hit.time = 1.0 / 0.0;
       vec4 reflect_clr = vec4(0,0,0,1);
-      vec3 r = normalize(reflect(dir, normalize(hit.norm)));
       vec3 wiggle = hit.pos + .00001 * (r);
-      rayRecurse2(wiggle, 1000 * r, 2, reflect_clr);
+      Ray reflect_ray = Ray(wiggle, 1000 * r, .001 / r);
+      rayRecurse2(reflect_ray, 2, reflect_clr);
       clr = vec4(clr.rgb + hit.mat.ks * reflect_clr.rgb, 1);
     }
   }
   color = clr;
 }
 
-void rayRecurse2(in vec3 pos, in vec3 dir, in int depth, out vec4 color) {
+void rayRecurse2(in Ray incoming, in int depth, out vec4 color) {
   HitInfo hit;
   hit.time = 1.0 / 0.0;
   hit.hit = false;
-  sceneIntersect(pos, dir, hit);
+  sceneIntersect(incoming, hit);
   vec4 clr = vec4(0, 0, 0, 1.0);
   if (hit.hit) {
-    lightPoint(hit.pos, dir, hit.norm, hit.mat, clr);
+    vec3 r = reflect(incoming.dir, hit.norm);
+    lightPoint(hit.pos, r, hit.norm, hit.mat, clr);
     if(hit.mat.ks.x + hit.mat.ks.y + hit.mat.ks.z > 0.0) {
       HitInfo reflect_hit;
       reflect_hit.hit = false;
       reflect_hit.time = 1.0 / 0.0;
       vec4 reflect_clr = vec4(0,0,0,1);
-      vec3 r = normalize(reflect(dir, normalize(hit.norm)));
-      vec3 wiggle = hit.pos + .001 * (r);
-      rayRecurse3(wiggle, 1000 * r, 2, reflect_clr);
+
+      vec3 wiggle = hit.pos + .00001 * (r);
+      Ray reflect_ray = Ray(wiggle, 1000 * r, .001 / r);
+      rayRecurse3(reflect_ray, 2, reflect_clr);
       clr = vec4(clr.rgb + hit.mat.ks * reflect_clr.rgb, 1);
     }
   }
   color = clr;
 }
 
-void rayRecurse3(in vec3 pos, in vec3 dir, in int depth, out vec4 color) {
+void rayRecurse3(in Ray incoming, in int depth, out vec4 color) {
   HitInfo hit;
   hit.time = 1.0 / 0.0;
   hit.hit = false;
-  sceneIntersect(pos, dir, hit);
+  sceneIntersect(incoming, hit);
   vec4 clr = vec4(0, 0, 0, 1.0);
   if (hit.hit) {
-    lightPoint(hit.pos, dir, hit.norm, hit.mat, clr);
+    vec3 r = reflect(incoming.dir, hit.norm);
+    lightPoint(hit.pos, r, hit.norm, hit.mat, clr);
     if(hit.mat.ks.x + hit.mat.ks.y + hit.mat.ks.z > 0.0) {
       HitInfo reflect_hit;
       reflect_hit.hit = false;
       reflect_hit.time = 1.0 / 0.0;
       vec4 reflect_clr = vec4(0,0,0,1);
-      vec3 r = normalize(reflect(dir, normalize(hit.norm)));
-      vec3 wiggle = hit.pos + .001 * (r);
-      rayRecurse4(wiggle, 1000 * r, 2, reflect_clr);
+
+      vec3 wiggle = hit.pos + .00001 * (r);
+      Ray reflect_ray = Ray(wiggle, r, 1.0 / r);
+      rayRecurse4(reflect_ray, 2, reflect_clr);
       clr = vec4(clr.rgb + hit.mat.ks * reflect_clr.rgb, 1);
     }
   }
   color = clr;
 }
 
-void rayRecurse4(in vec3 pos, in vec3 dir, in int depth, out vec4 color) {
+void rayRecurse4(in Ray incoming, in int depth, out vec4 color) {
   HitInfo hit;
   hit.time = 1.0 / 0.0;
   hit.hit = false;
-  sceneIntersect(pos, dir, hit);
+  sceneIntersect(incoming, hit);
   vec4 clr = vec4(0, 0, 0, 1.0);
   if (hit.hit) {
-    lightPoint(hit.pos, dir, hit.norm, hit.mat, clr);
-    if(hit.mat.ks.x + hit.mat.ks.y + hit.mat.ks.z > 0.0) {
-      HitInfo reflect_hit;
-      reflect_hit.hit = false;
-      reflect_hit.time = 1.0 / 0.0;
-      vec4 reflect_clr = vec4(0,0,0,1);
-      vec3 r = normalize(reflect(dir, normalize(hit.norm)));
-      vec3 wiggle = hit.pos + .001 * (r);
-      rayRecurse5(wiggle, 1000 * r, 2, reflect_clr);
-      clr = vec4(clr.rgb + hit.mat.ks * reflect_clr.rgb, 1);
-    }
+    vec3 r = reflect(incoming.dir, hit.norm);
+    lightPoint(hit.pos, r, hit.norm, hit.mat, clr);
   }
   color = clr;
-}
-
-
-void rayRecurse5(in vec3 pos, in vec3 dir, in int depth, out vec4 color) {
-  color = vec4(0,0,0,1);
 }
 
 /**
@@ -217,7 +214,7 @@ void rayRecurse5(in vec3 pos, in vec3 dir, in int depth, out vec4 color) {
  * of O(d). Therefore even if we limit the stack to a finite size of 20, we can
  * support up to 1,048,576 triangles!
  */    
-void sceneIntersect(in vec3 pos, in vec3 dir, inout HitInfo hit) {
+void sceneIntersect(in Ray incoming, inout HitInfo hit) {
     int index = 0;
     int stack[20];
     stack[0] = 0;
@@ -237,7 +234,7 @@ void sceneIntersect(in vec3 pos, in vec3 dir, inout HitInfo hit) {
       HitInfo box_hit;
       box_hit.hit = false;
       box_hit.time = 1.0 / 0.0;
-      AABBIntersect(pos, dir, cur_node.dim, box_hit);
+      AABBIntersect(incoming, cur_node.dim, box_hit);
       if(!box_hit.hit) {
         continue;
       }
@@ -246,14 +243,10 @@ void sceneIntersect(in vec3 pos, in vec3 dir, inout HitInfo hit) {
         HitInfo tri_hit;
         tri_hit.time = 1.0/0.0;
         tri_hit.hit = false;
-        triangleIntersect(pos, dir, tris[cur_node.tri_offset], tri_hit);
+        triangleIntersect(incoming, tris[cur_node.tri_offset], tri_hit);
         if(tri_hit.hit && tri_hit.time < hit.time) {
           // this triangle is closest, so keep track of it
-          hit.hit = true;
-          hit.norm = tri_hit.norm;
-          hit.pos = tri_hit.pos;
-          hit.time = tri_hit.time;
-          hit.mat = tri_hit.mat;
+          hit = tri_hit;
         }
       }
       else {
@@ -269,21 +262,21 @@ void sceneIntersect(in vec3 pos, in vec3 dir, inout HitInfo hit) {
 /**
  * Check if the ray (pos, dir) intersects the AABB dim, and store the results in hit
  */
-void AABBIntersect(in vec3 pos, in vec3 dir, in Dimension dim, inout HitInfo hit) {
+void AABBIntersect(in Ray incoming, in Dimension dim, inout HitInfo hit) {
   float tmin = -1.0 / 0.0;
   float tmax = 1.0 / 0.0;
-  float tx1 = (dim.min_pt.x - pos.x) / dir.x;
-  float tx2 = (dim.max_pt.x - pos.x) / dir.x;
+  float tx1 = (dim.min_pt.x - incoming.pos.x) * incoming.inv_dir.x;
+  float tx2 = (dim.max_pt.x - incoming.pos.x) * incoming.inv_dir.x;
   tmin = max(tmin, min(tx1, tx2));
   tmax = min(tmax, max(tx1, tx2));
 
-  float ty1 = (dim.min_pt.y - pos.y) / dir.y;
-  float ty2 = (dim.max_pt.y - pos.y) / dir.y;
+  float ty1 = (dim.min_pt.y - incoming.pos.y) * incoming.inv_dir.y;
+  float ty2 = (dim.max_pt.y - incoming.pos.y) * incoming.inv_dir.y;
   tmin = max(tmin, min(ty1, ty2));
   tmax = min(tmax, max(ty1, ty2));
 
-  float tz1 = (dim.min_pt.z - pos.z) / dir.z;
-  float tz2 = (dim.max_pt.z - pos.z) / dir.z;
+  float tz1 = (dim.min_pt.z - incoming.pos.z) * incoming.inv_dir.z;
+  float tz2 = (dim.max_pt.z - incoming.pos.z) * incoming.inv_dir.z;
   tmin = max(tmin, min(tz1, tz2));
   tmax = min(tmax, max(tz1, tz2));
 
@@ -301,50 +294,48 @@ void AABBIntersect(in vec3 pos, in vec3 dir, in Dimension dim, inout HitInfo hit
   return;
 }
 
-void triangleIntersect(in vec3 pos, in vec3 dir, in Triangle tri, inout HitInfo hit) {
+void triangleIntersect(in Ray incoming, in Triangle tri, inout HitInfo hit) {
     // get the plane normal
-    vec3 to_plane = vec3(tri.p1.x - pos.x, tri.p1.y - pos.y, tri.p1.z - pos.z);
+    vec3 to_plane = tri.p1 - incoming.pos;
     vec3 norm  = cross(tri.p3 - tri.p1, tri.p2 - tri.p1);
-    float denom = dot(norm, dir);
+    float denom = dot(norm, incoming.dir);
     // the ray is parallel, so return nothing
     if (abs(denom) < .001) {
       hit.hit = false;
-      hit.time = 1.0;
       return;
     }
-    float t = dot(to_plane, norm) / denom;
-    hit.time = t;
-    hit.pos = pos + dir * hit.time;
-    if (t < 0.0) {
+    hit.time = dot(to_plane, norm) / denom;
+    hit.pos = incoming.pos + incoming.dir * hit.time;
+    if (hit.time < 0.0) {
       hit.hit = false;
-      hit.time = 2.0;
       return;
     }
-    vec3 plane_pos = vec3(pos.x + (dir.x * t), pos.y + (dir.y * t), pos.z + (dir.z * t));
-    // no half cause it will cancel out 
+    // Use Barycentric Coordinates to do triangle inside-outside test
     float tri_area = length(cross(tri.p2 - tri.p1, tri.p3 - tri.p1));
-    float a = length(cross(tri.p3 - plane_pos, tri.p2 - plane_pos)) / tri_area;
-    float b = length(cross(tri.p3 - plane_pos, tri.p1 - plane_pos)) / tri_area;
-    float c = length(cross(tri.p1 - plane_pos, tri.p2 - plane_pos)) / tri_area;
+    vec3 to_p3 = tri.p3 - hit.pos;
+    vec3 to_p2 = tri.p2 - hit.pos;
+    vec3 to_p1 = tri.p1 - hit.pos;
+    float a = length(cross(to_p3, to_p2)) / tri_area;
+    float b = length(cross(to_p3, to_p1)) / tri_area;
+    float c = length(cross(to_p1, to_p2)) / tri_area;
     if(a <= 1.0001 && b <= 1.0001 && c <= 1.0001 && (a + b + c) <= 1.0001) {
       hit.hit = true;
-      hit.time = (t);
-      hit.pos = plane_pos;
+      // use barycentric normals to interpolate the normal at the intersection
       hit.norm = normalize(a * tri.n1 + b * tri.n2 + c * tri.n3);
-      if(dot(hit.norm, dir) > 0.0) {
+      if(dot(hit.norm, incoming.dir) > 0.0) {
+        // Make sure the normal is facing outwards for illumination
         hit.norm = -1.0 * hit.norm;
       }
       hit.mat = tri.mat;
       return;
     }
     else {
-      hit.time = 3.0;
       hit.hit = false;
       return;
     }
 }
 
-void lightPoint(in vec3 pos, in vec3 dir, in vec3 norm, in Material mat, out vec4 color) {
+void lightPoint(in vec3 pos, in vec3 reflect_dir, in vec3 norm, in Material mat, out vec4 color) {
   vec3 to_eye = normalize(eye - pos);
   vec3 ambient = 0.25 * mat.ka;
   vec3 tot_clr = ambient;
@@ -363,21 +354,22 @@ void lightPoint(in vec3 pos, in vec3 dir, in vec3 norm, in Material mat, out vec
         to_light = -lights[i].dir;
         break;
     }
-    to_light = normalize(to_light);
     HitInfo shadow_hit;
     shadow_hit.time = 1.0 / 0.0;
     shadow_hit.hit = false;
-    vec3 wiggle = pos + 0.0001 * to_light;
-    sceneIntersect(wiggle, 1000 * to_light, shadow_hit);
+    vec3 wiggle = pos + 0.01 * to_light;
+    Ray shadow_ray = Ray(wiggle, 1000 * to_light, .001 / to_light);
+    sceneIntersect(shadow_ray, shadow_hit);
     if(shadow_hit.hit && shadow_hit.time < dist) {
       // in depth shadow testing
       // get distance from point of origin to shadow hit
       continue;
     }
+    to_light = normalize(to_light);
     vec3 n = normalize(norm);
-    float dir = dot(n, to_light);
-    vec3 r = normalize(reflect(to_light, n));
-    float kd = max(0.0, dir);
+    float n_dot_l = dot(n, to_light);
+    vec3 r = normalize(reflect_dir);
+    float kd = max(0.0, n_dot_l);
     float ks = max(0.0, pow(dot(r, to_eye), 5));
     
     vec3 diffuse = attenuation * kd * lights[i].clr * mat.kd;

@@ -3,6 +3,8 @@
 #include <glad/glad.h>
 
 #include <string>
+#include <cstring>
+#include <vector>
 #include <cstdlib>
 #include <chrono>
 #define _USE_MATH_DEFINES
@@ -16,9 +18,7 @@
 #include "config.h"
 #include "bvh.h"
 
-using namespace std;
-using namespace std::chrono;
-
+#define DEBUG
 float vertices[] = {  // This are the verts for the fullscreen quad
 //  X      Y     U     V
    1.0f,  1.0f, 1.0f, 0.0f,  // top right
@@ -57,8 +57,8 @@ const GLchar* fragment_source =
    "}";
 
 // global values obtained from file reading
-vector<MaterialGL> mats(0);  // all the materials in the scenefile
-vector<LightGL> lights(0);  // all the lights in the scenefile
+std::vector<MaterialGL> mats(0);  // all the materials in the scenefile
+std::vector<LightGL> lights(0);  // all the lights in the scenefile
 bvh scene_bvh;  // all the triangles in the scene
 
 // These are the camera values
@@ -119,8 +119,7 @@ static void mouseCallback(GLFWwindow *window, double x_pos, double y_pos) {
     if(!l_mouse_down) {
         return;
     }
-    if (begin_drag)
-    {
+    if (begin_drag) {
         mouse_x = x_pos;
         mouse_y = y_pos;
         begin_drag = false;
@@ -132,12 +131,14 @@ static void mouseCallback(GLFWwindow *window, double x_pos, double y_pos) {
     mouse_y = y_pos;
     theta += .005f * x_offset;
     phi += .005f * y_offset;
+    // Prevent gimble lock
     if(phi > 89.0f) {
       phi =  89.0f;
     }
     else if(phi < -89.0f) {
       phi = -89.0f;
     }
+    // Find the new camera basis
     Dir3D fwd_dir(cos(theta) * cos(phi), sin(phi), sin(theta) * cos(phi));
     fwd_dir = fwd_dir.normalized();
     // reorthogonalize the camera basis   
@@ -174,20 +175,20 @@ static void windowSizeCallback(GLFWwindow *window, int width, int height) {
  * Load a scenefile and initialize all the data which needs to be sent to the GPU 
  */
 void loadFromFile(string input_file_name) {
-    ifstream in_file(input_file_name);
+    std::ifstream in_file(input_file_name);
     if (!in_file.good()) {
-        cerr << "Couldn't open file: " << input_file_name << endl;
+        std::cerr << "Couldn't open file: " << input_file_name << endl;
         exit(1);
     }
     // The file was opened, so we are good to parse data now!
-    vector<TriangleGL> bvh_tris;
+    std::vector<TriangleGL> bvh_tris;
     // The default material is a matte white
     MaterialGL cur_mat;
     // we allow at most 100 materials and 100 lights in the shader
     mats.push_back(cur_mat);
 
-    vector<float> verts;
-    vector<float> norms;
+    std::vector<float> verts;
+    std::vector<float> norms;
     // The maximum and minimum bounds of the scene. Used when generating the BVH
     Point3D min_pt(INFINITY, INFINITY, INFINITY), max_pt(-INFINITY, -INFINITY, -INFINITY);
     int max_vert(-1), max_norm(-1), nindex(0), vindex(0), tindex(0);
@@ -241,7 +242,7 @@ void loadFromFile(string input_file_name) {
         }
         else if (!command.compare("triangle:")) {
             if (max_vert < 0) {
-                cerr << "ERROR: NUMBER OF VERTICES NOT SPECIFIED. SKIPPING" << endl;
+                std::cerr << "ERROR: NUMBER OF VERTICES NOT SPECIFIED. SKIPPING" << endl;
                 continue;
             }
             int p1, p2, p3;
@@ -268,7 +269,7 @@ void loadFromFile(string input_file_name) {
         }
         else if (!command.compare("normal_triangle:")) {
             if (max_vert < 0 || max_norm < 0) {
-                cerr << "ERROR: NUMBER OF VERTICES/NORMALS NOT SPECIFIED. SKIPPING" << endl;
+                std::cerr << "ERROR: NUMBER OF VERTICES/NORMALS NOT SPECIFIED. SKIPPING" << endl;
                 continue;
             }
             int p1, p2, p3, n1, n2, n3;
@@ -303,7 +304,7 @@ void loadFromFile(string input_file_name) {
         }
         else {
             // Unsupported command or comment, just skip it
-            getline(in_file, line);
+            std::getline(in_file, line);
             continue;
         }
     }
@@ -334,7 +335,7 @@ void loadFromFile(string input_file_name) {
 
 int main(int argc, char *argv[]){
     string file_name;
-    cin >> file_name;
+    std::cin >> file_name;
     // Try loading the scene information 
     loadFromFile(file_name);
     // Load successful, create a GLFW window and OpenGL context
@@ -409,11 +410,11 @@ int main(int argc, char *argv[]){
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); //upload vertices to vbo
     GLuint ray_tracer, compute_shader;
     // Load the compute shader
-    ifstream compute_file(DEBUG_DIR + std::string("/rayTrace_Compute.glsl"));
+    std::ifstream compute_file(DEBUG_DIR + std::string("/rayTrace_Compute.glsl"));
     if(!compute_file.good()) {
         compute_file.open(INSTALL_DIR + std::string("/rayTrace_Compute.glsl"));
     }
-    string compute_source((istreambuf_iterator<char>(compute_file)), istreambuf_iterator<char>());
+    std::string compute_source((std::istreambuf_iterator<char>(compute_file)), std::istreambuf_iterator<char>());
    
     compute_shader = glCreateShader(GL_COMPUTE_SHADER);
     const char* src = compute_source.c_str();
@@ -422,12 +423,12 @@ int main(int argc, char *argv[]){
     GLint status = 0;
 
    // We need to load, compile, and link the compute shader
-   #ifndef DEBUG
+   #ifdef DEBUG
    glGetShaderiv(compute_shader, GL_COMPILE_STATUS, &status);
    if (status == GL_FALSE) {
        char buffer[512];
        glGetShaderInfoLog(compute_shader, 512, NULL, buffer);
-       cout << "Compute Shader Compile Failed. Info:\n\n" << endl;
+       std::cout << "Compute Shader Compile Failed. Info:\n\n" << buffer << std::endl;
    }
    #endif
    // Unlike vertex and fragment shaders, compute shaders need to be placed in their
@@ -446,7 +447,7 @@ int main(int argc, char *argv[]){
    // Now set the Uniform values
 
    // set all the camera uniforms
-   float d = (height * .5) / tanf(half_fov * (M_PI / 180.0));
+   float d = (height * .5f) / std::tanf(half_fov * (M_PI / 180.0));
    glUniform1i(glGetUniformLocation(ray_tracer, "num_lights"), lights.size());
    glUniform1i(glGetUniformLocation(ray_tracer, "num_tris"), num_triangles);
    glUniform1f(glGetUniformLocation(ray_tracer, "width"), img_width);
@@ -544,12 +545,12 @@ int main(int argc, char *argv[]){
    
     glUseProgram(ray_tracer);
     // Execute initial raytrace. Workgroup size was manually adjusted by hand
-    auto start = high_resolution_clock::now();
+    auto start = std::chrono::high_resolution_clock::now();
     glDispatchCompute(width/10, height/10, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-    auto end = high_resolution_clock::now();
+    auto end = std::chrono::high_resolution_clock::now();
     auto dur = end - start;
-    auto ms = duration_cast<milliseconds>(dur).count();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(dur).count();
     cout << "time elapsed: " << ms << endl;
     glUseProgram(shader_program);
     int t = 0;
