@@ -564,7 +564,7 @@ int main(int argc, char *argv[]){
             glUniform3fv(glGetUniformLocation(ray_tracer, "up"), 1, up);
             // compute shaders work in workgroups, so we need to specify how many groups we want.
             // In this case, each workgroup works on a 10 x 10 block of pixels, so we need
-            // width / 10 and height / 10 groups (I think, I honestly don't know much about this part)
+            // width / 10 and height / 10 groups
             glDispatchCompute(width / 10, height / 10, 1);
             // glMemoryBarrier is basically a mutex. It makes sure the GPU memory is synchronized before
             // we try to draw the raytraced image. Otherwise we may get a half-rendered image!
